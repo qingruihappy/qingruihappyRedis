@@ -1,0 +1,289 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║        Filter 和 Interceptor 执行流程完整示例项目                              ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+项目概述
+─────────────────────────────────────────────────────────────────────────────
+本项目完整演示了 Spring MVC 中 Filter 和 Interceptor 的执行流程，
+包括正常流程和异常处理的各种场景，帮助理解两者的区别和使用场景。
+
+
+核心功能
+─────────────────────────────────────────────────────────────────────────────
+✓ 三个 Filter（FirstFilter、SecondFilter、ThirdFilter）
+✓ 三个 Interceptor（FirstInterceptor、SecondInterceptor、ThirdInterceptor）
+✓ 一个测试 Controller
+✓ 异常场景控制（通过请求参数）
+✓ 详细的日志输出
+✓ 完整的时序图
+
+
+项目结构
+─────────────────────────────────────────────────────────────────────────────
+filter-interceptor-demo/
+│
+├── 📁 src/main/java/com/example/demo/
+│   ├── FilterInterceptorDemoApplication.java    主应用类
+│   │
+│   ├── 📁 config/
+│   │   └── WebConfig.java                       Web配置（注册组件）
+│   │
+│   ├── 📁 filter/
+│   │   ├── FirstFilter.java                     第一个过滤器
+│   │   ├── SecondFilter.java                    第二个过滤器（可控异常）
+│   │   └── ThirdFilter.java                     第三个过滤器
+│   │
+│   ├── 📁 interceptor/
+│   │   ├── FirstInterceptor.java                第一个拦截器
+│   │   ├── SecondInterceptor.java               第二个拦截器（可控异常）
+│   │   └── ThirdInterceptor.java                第三个拦截器
+│   │
+│   └── 📁 controller/
+│       └── TestController.java                  测试控制器
+│
+├── 📁 src/main/resources/
+│   └── application.properties                   应用配置
+│
+├── 📄 pom.xml                                   Maven依赖配置
+│
+├── 📊 sequence-diagram.puml                     详细时序图（PlantUML）
+├── 📋 流程对比图.txt                            文本流程对比图
+│
+├── 📖 README.md                                 完整项目文档
+├── 📖 快速开始.md                               快速开始指南
+├── 📖 执行流程详解.md                           详细执行流程说明
+├── 📖 项目说明.txt                              本文件
+│
+└── 🔧 test-scenarios.sh                         测试脚本
+
+
+测试场景
+─────────────────────────────────────────────────────────────────────────────
+
+场景1: 正常流程（无异常）
+┌────────────────────────────────────────────────────────────────────────┐
+│ 测试命令: curl http://localhost:8080/test                              │
+│                                                                         │
+│ 执行顺序:                                                               │
+│   1. FirstFilter 前置 → SecondFilter 前置 → ThirdFilter 前置          │
+│   2. DispatcherServlet 接收                                            │
+│   3. FirstInterceptor.preHandle → SecondInterceptor.preHandle →       │
+│      ThirdInterceptor.preHandle                                        │
+│   4. Controller 处理                                                    │
+│   5. ThirdInterceptor.postHandle → SecondInterceptor.postHandle →     │
+│      FirstInterceptor.postHandle                                       │
+│   6. ThirdInterceptor.afterCompletion → SecondInterceptor.after... →  │
+│      FirstInterceptor.afterCompletion                                  │
+│   7. ThirdFilter 后置 → SecondFilter 后置 → FirstFilter 后置          │
+│                                                                         │
+│ 响应: "请求处理成功！"                                                  │
+└────────────────────────────────────────────────────────────────────────┘
+
+场景2: SecondFilter 抛出异常
+┌────────────────────────────────────────────────────────────────────────┐
+│ 测试命令: curl "http://localhost:8080/test?throwFilterException=true" │
+│                                                                         │
+│ 执行顺序:                                                               │
+│   1. FirstFilter 前置                                                   │
+│   2. SecondFilter 前置                                                  │
+│   3. SecondFilter 抛出异常！                                            │
+│   4. FirstFilter 捕获异常并处理                                         │
+│                                                                         │
+│ 中断点: SecondFilter                                                    │
+│ 不执行: ThirdFilter、DispatcherServlet、所有Interceptor、Controller    │
+│                                                                         │
+│ 响应: "Filter捕获异常: SecondFilter 故意抛出的异常"                     │
+└────────────────────────────────────────────────────────────────────────┘
+
+场景3: SecondInterceptor 抛出异常
+┌────────────────────────────────────────────────────────────────────────┐
+│ 测试命令: curl "http://localhost:8080/test?throwInterceptorException=│
+│           true"                                                         │
+│                                                                         │
+│ 执行顺序:                                                               │
+│   1. FirstFilter 前置 → SecondFilter 前置 → ThirdFilter 前置          │
+│   2. DispatcherServlet 接收                                            │
+│   3. FirstInterceptor.preHandle                                        │
+│   4. SecondInterceptor.preHandle 抛出异常！                            │
+│   5. DispatcherServlet 异常处理                                        │
+│   6. FirstInterceptor.afterCompletion (携带异常信息)                   │
+│   7. ThirdFilter 后置 → SecondFilter 后置 → FirstFilter 后置          │
+│                                                                         │
+│ 中断点: SecondInterceptor.preHandle                                    │
+│ 不执行: ThirdInterceptor.preHandle、所有postHandle、Controller         │
+│ 特别注意: 只有 FirstInterceptor 的 afterCompletion 执行                │
+│                                                                         │
+│ 响应: 错误响应                                                          │
+└────────────────────────────────────────────────────────────────────────┘
+
+
+快速开始
+─────────────────────────────────────────────────────────────────────────────
+
+1️⃣  启动应用
+   cd /workspace/filter-interceptor-demo
+   mvn spring-boot:run
+
+2️⃣  运行测试（新终端窗口）
+   cd /workspace/filter-interceptor-demo
+   ./test-scenarios.sh
+
+3️⃣  查看时序图
+   方式1: http://www.plantuml.com/plantuml/ （粘贴 sequence-diagram.puml 内容）
+   方式2: 使用 IDE 的 PlantUML 插件
+   方式3: plantuml sequence-diagram.puml
+
+4️⃣  查看流程对比
+   cat 流程对比图.txt
+
+
+关键知识点
+─────────────────────────────────────────────────────────────────────────────
+
+Filter vs Interceptor
+┌────────────────┬─────────────────────┬─────────────────────────┐
+│     维度       │       Filter        │      Interceptor        │
+├────────────────┼─────────────────────┼─────────────────────────┤
+│ 级别           │ Servlet容器级别     │ Spring MVC级别          │
+│ 依赖           │ Servlet API         │ Spring框架              │
+│ 执行位置       │ DispatcherServlet前 │ DispatcherServlet内     │
+│ 异常处理       │ 需要显式catch       │ Spring自动处理          │
+│ 访问Spring Bean│ 不方便              │ 可以直接注入            │
+│ 后置执行保证   │ try-finally才保证   │ afterCompletion总执行   │
+└────────────────┴─────────────────────┴─────────────────────────┘
+
+执行顺序记忆
+┌─────────────────────────────────────────────────────────────────┐
+│ Filter 执行顺序:                                                 │
+│   前置: 按 Order 顺序 (1 → 2 → 3)                               │
+│   后置: 倒序执行 (3 → 2 → 1)                                    │
+│   模型: 洋葱模型（一层包一层）                                   │
+│                                                                  │
+│ Interceptor 执行顺序:                                            │
+│   preHandle:       按注册顺序 (1 → 2 → 3)                       │
+│   postHandle:      倒序执行 (3 → 2 → 1)                         │
+│   afterCompletion: 倒序执行 (3 → 2 → 1)                         │
+│   特点: 只有执行了 preHandle 的才会调用 afterCompletion         │
+└─────────────────────────────────────────────────────────────────┘
+
+异常处理机制
+┌─────────────────────────────────────────────────────────────────┐
+│ Filter 异常:                                                     │
+│   ✗ 如果不捕获，整个请求链中断                                   │
+│   ✓ 捕获后可以自定义错误响应                                     │
+│   ✗ 后续所有组件都不会执行                                       │
+│                                                                  │
+│ Interceptor 异常:                                                │
+│   ✓ Spring 自动处理，不需要显式捕获                              │
+│   ✓ afterCompletion 会执行（对于已执行 preHandle 的）           │
+│   ✓ Filter 后置处理仍然执行                                      │
+│   ✗ postHandle 不会执行                                          │
+└─────────────────────────────────────────────────────────────────┘
+
+
+DispatcherServlet 的角色
+─────────────────────────────────────────────────────────────────────────────
+DispatcherServlet 是 Spring MVC 的核心组件，它的作用：
+
+1. 接收请求（从 Filter 链传递过来）
+2. 查找 Handler（Controller 方法）
+3. 调用 Interceptor 的 preHandle
+4. 执行 Handler（Controller 方法）
+5. 调用 Interceptor 的 postHandle
+6. 处理视图渲染
+7. 调用 Interceptor 的 afterCompletion
+8. 返回响应（给 Filter 链）
+
+它是连接 Filter 和 Interceptor 的桥梁！
+
+执行流程图示：
+┌─────────────────────────────────────────────────────────────────┐
+│                        客户端请求                                │
+└─────────────────────────────────────────────────────────────────┘
+                               ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                     Filter Chain                                 │
+│                   (Servlet容器级别)                              │
+└─────────────────────────────────────────────────────────────────┘
+                               ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    DispatcherServlet                             │
+│  ┌───────────────────────────────────────────────────────────┐ │
+│  │              Interceptor Chain                             │ │
+│  │              (Spring MVC级别)                              │ │
+│  │                      ↓                                     │ │
+│  │              Controller处理                                │ │
+│  └───────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+                               ↓
+                          客户端响应
+
+
+常见问题 FAQ
+─────────────────────────────────────────────────────────────────────────────
+
+Q1: 为什么 Filter 异常时，FirstFilter 的后置处理不执行？
+A1: 因为异常在 catch 块中被捕获，try 块后面的代码不会执行。
+    如果需要后置处理总是执行，应该使用 try-finally 结构。
+
+Q2: 为什么 Interceptor 异常时，Filter 的后置处理还会执行？
+A2: Filter 采用洋葱模型，即使 DispatcherServlet 内部抛异常，
+    只要异常被处理了（不向外抛），Filter 的后置代码仍会执行。
+
+Q3: 为什么只有 FirstInterceptor 的 afterCompletion 执行？
+A3: 这是 Spring 的设计：只有成功执行 preHandle 的拦截器，
+    其 afterCompletion 才会被调用。这保证了资源准备和清理的对称性。
+
+Q4: 生产环境中如何选择 Filter 还是 Interceptor？
+A4: Filter: 通用的请求处理（编码、跨域、安全），不依赖 Spring
+    Interceptor: 业务相关处理（权限、日志），需要访问 Spring Bean
+
+
+学习路径
+─────────────────────────────────────────────────────────────────────────────
+第1步 ✓ 阅读本文件，了解项目概况
+第2步 ✓ 查看 快速开始.md，运行项目
+第3步 ✓ 查看 流程对比图.txt，理解执行流程
+第4步 ✓ 查看 sequence-diagram.puml，理解时序
+第5步 ✓ 查看 执行流程详解.md，深入理解
+第6步 ✓ 查看 README.md，了解完整文档
+第7步 ✓ 阅读源代码，理解实现细节
+第8步 ✓ 修改代码，实验不同场景
+
+
+推荐阅读顺序
+─────────────────────────────────────────────────────────────────────────────
+1. 项目说明.txt         ← 你在这里（项目概览）
+2. 快速开始.md          ← 快速运行项目
+3. 流程对比图.txt       ← 直观理解流程
+4. sequence-diagram.puml ← 详细时序图
+5. 执行流程详解.md      ← 深入理解机制
+6. README.md            ← 完整技术文档
+
+
+技术栈
+─────────────────────────────────────────────────────────────────────────────
+• Spring Boot 2.7.14
+• Spring MVC
+• Servlet API
+• Maven
+• Java 8+
+
+
+作者寄语
+─────────────────────────────────────────────────────────────────────────────
+通过本项目的学习，你应该能够：
+✓ 理解 Filter 和 Interceptor 的区别
+✓ 掌握它们的执行顺序和时机
+✓ 理解异常处理机制的差异
+✓ 知道在实际项目中如何选择使用
+✓ 理解 DispatcherServlet 的核心作用
+
+这些知识在实际开发和面试中都非常重要！
+
+
+═══════════════════════════════════════════════════════════════════════════════
+项目创建时间: 2025-10-04
+最后更新时间: 2025-10-04
+版本: v1.0.0
+═══════════════════════════════════════════════════════════════════════════════

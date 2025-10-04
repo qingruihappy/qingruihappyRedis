@@ -1,0 +1,172 @@
+@startuml Filter和Interceptor执行流程时序图
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+
+title Filter和Interceptor执行流程（包含异常处理场景）
+
+actor 客户端 as Client
+participant "FirstFilter" as F1
+participant "SecondFilter" as F2
+participant "ThirdFilter" as F3
+participant "DispatcherServlet" as DS
+participant "FirstInterceptor" as I1
+participant "SecondInterceptor" as I2
+participant "ThirdInterceptor" as I3
+participant "Controller" as Ctrl
+
+== 场景1: 正常流程（无异常） ==
+Client -> F1: HTTP请求
+activate F1
+note right of F1: FirstFilter\n前置处理
+
+F1 -> F2: chain.doFilter()
+activate F2
+note right of F2: SecondFilter\n前置处理\n(无异常)
+
+F2 -> F3: chain.doFilter()
+activate F3
+note right of F3: ThirdFilter\n前置处理
+
+F3 -> DS: chain.doFilter()\n进入DispatcherServlet
+activate DS
+note right of DS: DispatcherServlet\n查找Handler
+
+DS -> I1: preHandle()
+activate I1
+note right of I1: 返回true\n继续执行
+I1 --> DS: true
+deactivate I1
+
+DS -> I2: preHandle()
+activate I2
+note right of I2: 返回true\n继续执行\n(无异常)
+I2 --> DS: true
+deactivate I2
+
+DS -> I3: preHandle()
+activate I3
+note right of I3: 返回true\n继续执行
+I3 --> DS: true
+deactivate I3
+
+DS -> Ctrl: 调用Controller方法
+activate Ctrl
+note right of Ctrl: 处理业务逻辑
+Ctrl --> DS: 返回结果
+deactivate Ctrl
+
+DS -> I3: postHandle()
+activate I3
+note right of I3: 倒序执行\npostHandle
+deactivate I3
+
+DS -> I2: postHandle()
+activate I2
+deactivate I2
+
+DS -> I1: postHandle()
+activate I1
+deactivate I1
+
+DS -> I3: afterCompletion(null)
+activate I3
+note right of I3: 倒序执行\nafterCompletion\nex=null
+deactivate I3
+
+DS -> I2: afterCompletion(null)
+activate I2
+deactivate I2
+
+DS -> I1: afterCompletion(null)
+activate I1
+deactivate I1
+
+DS --> F3: 返回响应
+deactivate DS
+
+note right of F3: ThirdFilter\n后置处理
+F3 --> F2: 返回
+deactivate F3
+
+note right of F2: SecondFilter\n后置处理
+F2 --> F1: 返回
+deactivate F2
+
+note right of F1: FirstFilter\n后置处理
+F1 --> Client: HTTP响应
+deactivate F1
+
+== 场景2: SecondFilter抛出异常 ==
+Client -> F1: HTTP请求\n(throwFilterException=true)
+activate F1
+note right of F1: FirstFilter\n前置处理
+
+F1 -> F2: chain.doFilter()
+activate F2
+note right of F2: SecondFilter\n前置处理
+note over F2 #red: 抛出ServletException!
+
+F2 --> F1: 抛出异常
+deactivate F2
+note right of F1: FirstFilter\n捕获异常\n(catch块)
+
+F1 --> Client: 错误响应\n(500错误)
+deactivate F1
+note over F3,Ctrl #lightgray: ThirdFilter、DispatcherServlet、\n拦截器、Controller都不会执行
+
+== 场景3: SecondInterceptor抛出异常 ==
+Client -> F1: HTTP请求\n(throwInterceptorException=true)
+activate F1
+note right of F1: FirstFilter\n前置处理
+
+F1 -> F2: chain.doFilter()
+activate F2
+note right of F2: SecondFilter\n前置处理\n(无异常)
+
+F2 -> F3: chain.doFilter()
+activate F3
+note right of F3: ThirdFilter\n前置处理
+
+F3 -> DS: chain.doFilter()
+activate DS
+note right of DS: DispatcherServlet\n查找Handler
+
+DS -> I1: preHandle()
+activate I1
+note right of I1: 返回true
+I1 --> DS: true
+deactivate I1
+
+DS -> I2: preHandle()
+activate I2
+note right of I2: 检测参数
+note over I2 #red: 抛出Exception!
+
+I2 --> DS: 抛出异常
+deactivate I2
+
+note right of DS: DispatcherServlet\n捕获异常\n触发异常处理
+
+DS -> I1: afterCompletion(exception)
+activate I1
+note right of I1: 只有已执行\npreHandle的\n拦截器才调用\nafterCompletion\nex!=null
+deactivate I1
+
+DS --> F3: 返回(异常)
+deactivate DS
+note over I2,Ctrl #lightgray: SecondInterceptor的afterCompletion、\nThirdInterceptor、Controller不会执行
+
+note right of F3: ThirdFilter\n后置处理\n(正常执行)
+F3 --> F2: 返回
+deactivate F3
+
+note right of F2: SecondFilter\n后置处理\n(正常执行)
+F2 --> F1: 返回
+deactivate F2
+
+note right of F1: FirstFilter\n后置处理\n(正常执行)
+F1 --> Client: HTTP响应
+deactivate F1
+
+@enduml
